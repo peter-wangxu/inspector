@@ -83,6 +83,62 @@ const baseHandlers = {
 };
 
 describe("ServerSettingsForm", () => {
+  it("adds, edits and removes OAuth routing headers without dropping other OAuth fields", async () => {
+    const user = userEvent.setup();
+    const onOAuthChange = vi.fn();
+    const { rerender } = renderWithMantine(
+      <ServerSettingsForm
+        {...baseHandlers}
+        settings={emptySettings}
+        expandedSections={["oauth"]}
+        onOAuthChange={onOAuthChange}
+      />,
+    );
+    await user.click(
+      screen.getByRole("button", { name: "+ Add OAuth Header" }),
+    );
+    expect(onOAuthChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ headers: [{ key: "", value: "" }] }),
+    );
+    const settings = {
+      ...populatedSettings,
+      oauthHeaders: [
+        { key: "x-tt-env", value: "boe" },
+        { key: "x-route", value: "blue" },
+      ],
+    };
+    rerender(
+      <ServerSettingsForm
+        {...baseHandlers}
+        settings={settings}
+        expandedSections={["oauth"]}
+        onOAuthChange={onOAuthChange}
+      />,
+    );
+    await user.type(
+      screen.getByRole("textbox", {
+        name: "OAuth header value, x-tt-env, row 1",
+      }),
+      "_",
+    );
+    expect(onOAuthChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        clientId: "cid",
+        headers: [
+          { key: "x-tt-env", value: "boe_" },
+          { key: "x-route", value: "blue" },
+        ],
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Remove OAuth header, x-tt-env, row 1",
+      }),
+    );
+    expect(onOAuthChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ headers: [{ key: "x-route", value: "blue" }] }),
+    );
+  });
   it("renders all section headers", () => {
     renderWithMantine(
       <ServerSettingsForm

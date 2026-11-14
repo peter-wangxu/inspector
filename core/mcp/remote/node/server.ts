@@ -1930,6 +1930,7 @@ export function createRemoteApp(
     clientSecret?: string;
     scopes?: string;
     authorizationParams?: Record<string, string>;
+    headers?: Record<string, string>;
     authorizationUrl?: string;
     tokenUrl?: string;
     enterpriseManaged?: boolean;
@@ -1939,6 +1940,7 @@ export function createRemoteApp(
   } => {
     if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
     const o = v as Record<string, unknown>;
+    if (o.headers !== undefined && !isStringRecord(o.headers)) return false;
     for (const k of [
       "clientId",
       "clientSecret",
@@ -2121,7 +2123,7 @@ export function createRemoteApp(
       if ("oauth" in valObj && !isOauthObject(valObj.oauth)) {
         logWarn(
           { route: "/api/servers", id, droppedKey: "oauth" },
-          "Dropping malformed `oauth` field — expected `{ clientId?, clientSecret?, scopes?, authorizationParams?, authorizationUrl?, tokenUrl?, enterpriseManaged?, onInsufficientScope?, requestRefreshToken?, scopeOnRefresh?, revokeOnClear? }`.",
+          "Dropping malformed `oauth` field — expected `{ headers?, clientId?, clientSecret?, scopes?, authorizationParams?, authorizationUrl?, tokenUrl?, enterpriseManaged?, onInsufficientScope?, requestRefreshToken?, scopeOnRefresh?, revokeOnClear? }`.",
         );
         delete valObj.oauth;
       }
@@ -2434,6 +2436,12 @@ export function createRemoteApp(
     }
     // Optional on the wire (older clients won't send it); when present it must
     // be the same `{ key, value }` row shape the headers/metadata lists use.
+    if (obj.oauthHeaders !== undefined && !isKvArray(obj.oauthHeaders)) {
+      return {
+        ok: false,
+        error: "settings.oauthHeaders must be an array of { key, value }",
+      };
+    }
     if (
       obj.oauthAuthorizationParams !== undefined &&
       !isKvArray(obj.oauthAuthorizationParams)
@@ -2605,6 +2613,7 @@ export function createRemoteApp(
     if (isKvArray(obj.oauthAuthorizationParams)) {
       value.oauthAuthorizationParams = obj.oauthAuthorizationParams;
     }
+    if (isKvArray(obj.oauthHeaders)) value.oauthHeaders = obj.oauthHeaders;
     // Empty-string coerces to absent like the credential fields above: the form
     // emits `""` when a user clears the input, and an empty override on disk
     // would read back as a configured-but-blank endpoint. (#1906)

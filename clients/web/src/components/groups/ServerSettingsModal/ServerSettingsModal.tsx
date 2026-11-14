@@ -191,6 +191,7 @@ export function ServerSettingsModal({
       // survives a re-render; the drop-blank/omit-empty filtering happens on the
       // way to disk. An emptied list persists as `[]`, which writes nothing.
       oauthAuthorizationParams: oauth.authorizationParams,
+      oauthHeaders: oauth.headers,
       // #1906: an emptied field persists as undefined rather than `""` — the
       // read side treats a blank override as "not configured", and keeping the
       // two in step means clearing the input really clears the setting.

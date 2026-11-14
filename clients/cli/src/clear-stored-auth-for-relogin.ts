@@ -11,6 +11,8 @@ import {
   type TokenRevocationOutcome,
 } from "@inspector/core/auth/revocation.js";
 import { createGuardedFetch } from "@inspector/core/mcp/node/fetchGuard.js";
+import { withOAuthHeaders } from "@inspector/core/auth/customHeaders.js";
+import type { InspectorServerSettings } from "@inspector/core/mcp/types.js";
 
 /** Same canonicalisation as CLI `normalizeServerUrl` (avoid cycles). */
 function normalizeServerUrl(serverUrl: string): string {
@@ -34,6 +36,7 @@ function normalizeServerUrl(serverUrl: string): string {
 export async function clearStoredAuthForRelogin(
   serverUrl: string | undefined,
   options?: {
+    serverSettings?: Pick<InspectorServerSettings, "headers" | "oauthHeaders">;
     revoke?: boolean;
     /**
      * Total wall-clock budget for the revocation requests across both key
@@ -79,7 +82,11 @@ export async function clearStoredAuthForRelogin(
 
   return options?.revoke === false
     ? undefined
-    : sendPlans(plans, options?.budgetMs ?? DEFAULT_REVOCATION_TIMEOUT_MS);
+    : sendPlans(
+        plans,
+        options?.budgetMs ?? DEFAULT_REVOCATION_TIMEOUT_MS,
+        options?.serverSettings,
+      );
 }
 
 /**
@@ -112,6 +119,7 @@ export async function clearStoredAuthForRelogin(
 async function sendPlans(
   plans: OAuthRevocationPlan[],
   budgetMs: number,
+  serverSettings?: Pick<InspectorServerSettings, "headers" | "oauthHeaders">,
 ): Promise<TokenRevocationOutcome | undefined> {
   // Revocation endpoints come from authorization-server metadata, so they get
   // the same destination guard as the rest of OAuth (#2749); proxy-aware too.
@@ -140,7 +148,11 @@ async function sendPlans(
       continue;
     }
     const outcome = await executeOAuthRevocation(plan, {
-      fetchFn,
+      fetchFn: withOAuthHeaders(
+        fetchFn,
+        () => serverSettings,
+        () => plan.serverUrl,
+      ),
       timeoutMs: needsNetwork ? remainingMs : undefined,
     });
     if (outcome.status === "skipped" && outcome.reason === "no_tokens") {

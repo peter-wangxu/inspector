@@ -44,6 +44,7 @@ import {
   traceCliOAuthFetch,
 } from "@inspector/core/cli/oauth-debug.js";
 import { InspectorClient } from "@inspector/core/mcp/index.js";
+import { withOAuthHeaders } from "@inspector/core/auth/customHeaders.js";
 import { cleanRoots } from "@inspector/core/mcp/serverList.js";
 import { UI_EXTENSION_KEY } from "@inspector/core/mcp/extensions.js";
 import {
@@ -51,6 +52,7 @@ import {
   createProxyFetch,
   createTransportNode,
   loadServerEntries,
+  headersToServerSettings,
   selectServerEntry,
   parseKeyValuePair as parseEnvPair,
   parseHeaderPair,
@@ -284,6 +286,7 @@ async function callMethod(
     // must not start failing because an authorization server is unreachable.
     const revocation = await clearStoredAuthForRelogin(serverConfig.url, {
       revoke: revoke && serverSettings?.oauthRevokeOnClear !== false,
+      serverSettings,
     });
     // A warning, not the result — `--quiet` drops it (#2435). The relogin
     // itself still happened; only the advisory line is suppressed.
@@ -708,6 +711,8 @@ function findStoredToken(
  * a real OAuth token endpoint. Both default to the SDK implementations.
  */
 export interface RefreshStoredAuthDeps {
+  /** Routing headers for standalone discovery and refresh requests. */
+  serverSettings?: Pick<InspectorServerSettings, "headers" | "oauthHeaders">;
   refresh?: typeof refreshAuthorization;
   discover?: typeof discoverAuthorizationServerMetadata;
   /** Where a destination-guard refusal warning goes (#2846). stderr by default. */
@@ -759,8 +764,12 @@ export async function refreshStoredAuthToken(
   const storedAuthFetch = withRfc8414OidcCompat(
     withOAuthRequestTimeout(
       traceCliOAuthFetch(
-        withFetchRefusalReporting(createGuardedFetch(), (refusal) =>
-          writeFetchRefusalWarning(refusal, deps.warn),
+        withOAuthHeaders(
+          withFetchRefusalReporting(createGuardedFetch(), (refusal) =>
+            writeFetchRefusalWarning(refusal, deps.warn),
+          ),
+          () => deps.serverSettings,
+          () => serverUrl,
         ),
         deps.oauthDebug === true,
       ),
@@ -1379,6 +1388,12 @@ async function parseArgs(argv?: string[]): Promise<ParseResult> {
       {},
     )
     .option(
+      "--oauth-header <header>",
+      'OAuth routing header as "HeaderName: Value" (repeatable; includes external AS origins)',
+      parseHeaderPair,
+      {},
+    )
+    .option(
       "--tool-metadata <pairs...>",
       "Tool-specific metadata as key=value pairs (for tools/call method only)",
       parseKeyValuePair,
@@ -1723,6 +1738,7 @@ async function parseArgs(argv?: string[]): Promise<ParseResult> {
     transport?: "sse" | "http" | "stdio";
     serverUrl?: string;
     header?: Record<string, string>;
+    oauthHeader?: Record<string, string>;
     appInfo?: boolean;
     advertiseApps?: boolean;
     strict?: boolean;
@@ -1821,6 +1837,17 @@ async function parseArgs(argv?: string[]): Promise<ParseResult> {
   // `--output` / `--output-format` (#2431), ahead of the short-circuit returns
   // for the same reason as `--strict` below.
   validateOutputOptions(options);
+
+  if (
+    Object.keys(options.oauthHeader ?? {}).length > 0 &&
+    (options.listStoredAuth ||
+      options.printHandoff ||
+      isCatalogMethod(options.method ?? ""))
+  ) {
+    throw new Error(
+      "--oauth-header requires a command that connects to a server; it has no effect with --list-stored-auth, --print-handoff, or a --method servers/* catalog command.",
+    );
+  }
 
   // `--strict` is checked HERE, ahead of every short-circuit return below
   // (`--list-stored-auth`, `--print-handoff`, `servers/list`, `servers/show`),
@@ -2147,6 +2174,18 @@ async function parseArgs(argv?: string[]): Promise<ParseResult> {
               // every other advisory line (#2435, #2846).
               ...(options.quiet === true && { warn: discardWarning }),
               oauthDebug: options.oauthDebug === true,
+              serverSettings:
+                options.header ||
+                Object.keys(options.oauthHeader ?? {}).length > 0
+                  ? {
+                      headers: Object.entries(options.header ?? {}).map(
+                        ([key, value]) => ({ key, value }),
+                      ),
+                      oauthHeaders: Object.entries(
+                        options.oauthHeader ?? {},
+                      ).map(([key, value]) => ({ key, value })),
+                    }
+                  : undefined,
             },
           );
         } catch (err) {
@@ -2191,10 +2230,18 @@ async function parseArgs(argv?: string[]): Promise<ParseResult> {
   // Ad-hoc invocations get a default connect timeout so a black-holed host
   // fails fast; catalog/config runs keep their file-level timeout unless
   // `--connect-timeout` is passed explicitly.
-  const serverSettings = withConnectTimeout(
+  let serverSettings = withConnectTimeout(
     selected.settings,
     options.connectTimeout ?? (adHoc ? DEFAULT_CONNECT_TIMEOUT_MS : undefined),
   );
+  const oauthHeaderSettings = headersToServerSettings(options.oauthHeader);
+  if (oauthHeaderSettings) {
+    serverSettings = {
+      ...oauthHeaderSettings,
+      ...serverSettings,
+      oauthHeaders: oauthHeaderSettings.headers,
+    };
+  }
 
   if (
     options.appInfo &&

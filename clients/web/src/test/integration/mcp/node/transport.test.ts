@@ -799,6 +799,53 @@ describe("Transport", () => {
   // handed it, so the SDK's OAuth from in here must go through the guard
   // while the MCP endpoint itself does not.
   describe("createBackendBaseFetch", () => {
+    it.each(["sse", "streamable-http", "stdio"] as const)(
+      "forwards configured OAuth routing headers in the backend (%s)",
+      async (type) => {
+        const seen: Record<string, string | string[] | undefined>[] = [];
+        const server = createServer((req, res) => {
+          seen.push(req.headers);
+          res.writeHead(200, { "content-type": "application/json" }).end("{}");
+        });
+        await new Promise<void>((resolve) =>
+          server.listen(0, "127.0.0.1", resolve),
+        );
+        const address = server.address() as AddressInfo;
+        const url = `http://127.0.0.1:${address.port}`;
+        const settings: InspectorServerSettings = {
+          headers: [{ key: "x-client", value: "mcp" }],
+          oauthHeaders: [{ key: "x-tt-env", value: "boe" }],
+          metadata: {},
+          env: [],
+          roots: [],
+          connectionTimeout: 0,
+          requestTimeout: 0,
+          taskTtl: 0,
+          maxFetchRequests: 100,
+        };
+        const config: MCPServerConfig =
+          type === "stdio"
+            ? { type, command: "x" }
+            : { type, url: `${url}/mcp` };
+        try {
+          await createBackendBaseFetch(config, settings)(`${url}/oauth/token`, {
+            method: "POST",
+            body: new URLSearchParams({ grant_type: "refresh_token" }),
+          });
+          expect(seen[0]["x-tt-env"]).toBe("boe");
+          expect(seen[0]["x-client"]).toBe(
+            type === "stdio" ? undefined : "mcp",
+          );
+          expect(seen[0]["content-type"]).toContain(
+            "application/x-www-form-urlencoded",
+          );
+        } finally {
+          await new Promise<void>((resolve, reject) =>
+            server.close((error) => (error ? reject(error) : resolve())),
+          );
+        }
+      },
+    );
     // An ambient proxy would replace the plain fetch these tests spy on.
     const savedProxyEnv = new Map<string, string | undefined>();
     beforeAll(() => {

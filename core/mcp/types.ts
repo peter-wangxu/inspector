@@ -233,6 +233,8 @@ export type StoredMCPServer = MCPServerConfig & {
    * when read into memory.
    */
   oauth?: {
+    /** Explicit headers for OAuth HTTP requests, including external AS origins. */
+    headers?: Record<string, string>;
     clientId?: string;
     clientSecret?: string;
     scopes?: string;
@@ -706,6 +708,8 @@ export interface InspectorRequestHistoryItem {
  * dispatches through stringly-typed key arguments.
  */
 export interface OAuthSettings {
+  /** Explicit OAuth HTTP headers; browser authorization navigation cannot send them. */
+  headers?: { key: string; value: string }[];
   clientId: string;
   clientSecret: string;
   scopes: string;
@@ -926,6 +930,8 @@ export interface InspectorServerSettings {
   /** TTL (ms) for tasks created via "Run as task". Defaults to 60000. */
   taskTtl: number;
   oauthClientId?: string;
+  /** Explicit headers for OAuth discovery, registration, token and revocation requests. */
+  oauthHeaders?: { key: string; value: string }[];
   oauthClientSecret?: string;
   oauthScopes?: string;
   /**

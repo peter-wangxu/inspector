@@ -279,6 +279,7 @@ import {
 } from "../auth/challenge.js";
 import { withOAuthEndpointOverrides } from "../auth/endpointOverrides.js";
 import { routeOAuthRequests } from "../auth/routeOAuthRequests.js";
+import { withOAuthHeaders } from "../auth/customHeaders.js";
 import {
   withFetchRefusalReporting,
   type FetchRefusal,
@@ -921,9 +922,14 @@ export class InspectorClient extends InspectorClientEventTarget {
       this.fetchFn ?? fetch,
       reportRefusal,
     );
-    const oauthBase =
-      options.environment.oauthFetch &&
-      withFetchRefusalReporting(options.environment.oauthFetch, reportRefusal);
+    const oauthBase = withOAuthHeaders(
+      withFetchRefusalReporting(
+        options.environment.oauthFetch ?? options.environment.fetch ?? fetch,
+        reportRefusal,
+      ),
+      () => this.transportSettings ?? this.serverSettings,
+      () => this.getServerUrl(),
+    );
     // Legacy SSE negotiates its message endpoint inside the stream, so its path
     // is unknowable here and the exemption has to widen to the origin.
     // Streamable HTTP sends everything to the configured URL, so the path rule
@@ -934,14 +940,13 @@ export class InspectorClient extends InspectorClientEventTarget {
     );
     const getOverrides = () => this.oauthManager?.getEndpointOverrides();
     const withOverrides = withOAuthEndpointOverrides(
-      oauthBase
-        ? routeOAuthRequests(transportBase, oauthBase, isMcpEndpoint)
-        : transportBase,
+      routeOAuthRequests(transportBase, oauthBase, isMcpEndpoint),
       getOverrides,
     );
-    const authWithOverrides = oauthBase
-      ? withOAuthEndpointOverrides(oauthBase, getOverrides)
-      : withOverrides;
+    const authWithOverrides = withOAuthEndpointOverrides(
+      oauthBase,
+      getOverrides,
+    );
     // #2172: recover discovery when a plain OAuth 2.0 authorization server
     // publishes RFC 8414 metadata at `/.well-known/openid-configuration`, which
     // the SDK validates as an OpenID provider document and rejects. Wraps the

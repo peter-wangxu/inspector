@@ -491,6 +491,89 @@ describe("/api/servers routes", () => {
       });
     });
 
+    it("persists OAuth routing headers and clears an emptied list", async () => {
+      const settings = {
+        headers: [],
+        metadata: {},
+        connectionTimeout: 0,
+        requestTimeout: 0,
+        oauthHeaders: [
+          { key: "X-Environment", value: "staging" },
+          { key: "Authorization", value: "must-not-override-oauth" },
+          { key: "", value: "unused" },
+        ],
+      };
+      const config = { type: "streamable-http", url: "https://x.test/mcp" };
+      const create = await fetch(`${h.baseUrl}/api/servers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: "oauthheaders", config, settings }),
+      });
+      expect(create.status).toBe(200);
+      expect(
+        readConfig(h.configPath).mcpServers.oauthheaders.oauth?.headers,
+      ).toEqual({ "x-environment": "staging" });
+      const update = await fetch(`${h.baseUrl}/api/servers/oauthheaders`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          config,
+          settings: { ...settings, oauthHeaders: [] },
+        }),
+      });
+      expect(update.status).toBe(200);
+      expect(
+        readConfig(h.configPath).mcpServers.oauthheaders.oauth,
+      ).toBeUndefined();
+    });
+
+    it.each([null, "invalid", {}, [{ key: "X-Environment", value: 7 }]])(
+      "rejects malformed OAuth header rows %j",
+      async (oauthHeaders) => {
+        const res = await fetch(`${h.baseUrl}/api/servers`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: "badoauthheaders",
+            config: { type: "streamable-http", url: "https://x.test/mcp" },
+            settings: {
+              headers: [],
+              metadata: {},
+              connectionTimeout: 0,
+              requestTimeout: 0,
+              oauthHeaders,
+            },
+          }),
+        });
+        expect(res.status).toBe(400);
+        expect(await res.json()).toMatchObject({
+          error: "settings.oauthHeaders must be an array of { key, value }",
+        });
+      },
+    );
+
+    it.each([null, [], "invalid", { "X-Environment": 7 }])(
+      "drops malformed disk OAuth header records %j",
+      async (headers) => {
+        writeFileSync(
+          h.configPath,
+          JSON.stringify({
+            mcpServers: {
+              bad: {
+                type: "streamable-http",
+                url: "https://x.test/mcp",
+                oauth: { headers },
+              },
+            },
+          }),
+        );
+        const res = await fetch(`${h.baseUrl}/api/servers`);
+        expect(res.status).toBe(200);
+        const config = (await res.json()) as MCPConfig;
+        expect(config.mcpServers.bad.oauth).toBeUndefined();
+      },
+    );
+
     it("rejects a malformed oauthAuthorizationParams payload", async () => {
       const res = await fetch(`${h.baseUrl}/api/servers`, {
         method: "POST",

@@ -31,6 +31,27 @@ const emptySettings: InspectorServerSettings = {
 };
 
 describe("ServerSettingsModal", () => {
+  it("persists the OAuth header rows from the form callback", async () => {
+    const user = userEvent.setup();
+    const onSettingsChange = vi.fn();
+    renderWithMantine(
+      <ServerSettingsModal
+        opened
+        settings={emptySettings}
+        serverType="streamable-http"
+        isStdio={false}
+        onClose={vi.fn()}
+        onSettingsChange={onSettingsChange}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /OAuth Settings/i }));
+    await user.click(
+      screen.getByRole("button", { name: "+ Add OAuth Header" }),
+    );
+    expect(onSettingsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ oauthHeaders: [{ key: "", value: "" }] }),
+    );
+  });
   it("does not render content when opened is false", () => {
     renderWithMantine(
       <ServerSettingsModal

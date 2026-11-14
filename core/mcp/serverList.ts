@@ -37,6 +37,7 @@ import {
   envSecretField,
 } from "../auth/secret-fields.js";
 import { toRecord } from "../json/jsonUtils.js";
+import { cleanOAuthHeaders } from "../auth/customHeaders.js";
 import type { JsonValue } from "../json/jsonUtils.js";
 import { isSerializableJson } from "../json/jsonUtils.js";
 
@@ -651,6 +652,8 @@ export function storedFieldsToInspectorSettings(
   if (stored.oauth?.clientSecret)
     settings.oauthClientSecret = stored.oauth.clientSecret;
   if (stored.oauth?.scopes) settings.oauthScopes = stored.oauth.scopes;
+  const oauthHeaders = cleanOAuthHeaders(stored.oauth?.headers);
+  if (oauthHeaders) settings.oauthHeaders = envRecordToPairs(oauthHeaders);
   // Optional record with no default; carried through only when the file has a
   // non-empty object, so an absent/empty field reads back as unset and the
   // write side then omits it — keeping a byte-stable round-trip. Sanitized
@@ -843,6 +846,10 @@ export function inspectorSettingsToStoredFields(
   }
 
   const oauthFields: NonNullable<StoredMCPServer["oauth"]> = {};
+  const oauthHeaders = cleanOAuthHeaders(
+    envPairsToRecord(settings.oauthHeaders ?? []),
+  );
+  if (oauthHeaders) oauthFields.headers = oauthHeaders;
   if (settings.oauthClientId) oauthFields.clientId = settings.oauthClientId;
   if (settings.oauthClientSecret)
     oauthFields.clientSecret = settings.oauthClientSecret;

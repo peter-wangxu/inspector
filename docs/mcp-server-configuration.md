@@ -188,6 +188,56 @@ The file is the familiar MCP client-config shape — an `mcpServers` object keye
 
 `example-server` is a live endpoint you can paste as-is — the MCP org's feature-reference server, [seeded into a fresh web catalog](#what-a-seeded-catalog-contains) for the same reason. `my-http-server` is a placeholder, shown with `headers` to illustrate the field.
 
+### OAuth HTTP headers
+
+`headers` configures MCP transport requests and supplies routing headers to OAuth
+requests whose origin matches the MCP server URL. `oauth.headers` explicitly
+configures headers for all OAuth HTTP destinations, including an external
+authorization server. Both accept a string-to-string record; `oauth.headers`
+defaults to unset and is omitted on write when empty.
+
+```json
+{
+  "mcpServers": {
+    "boe": {
+      "type": "http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": { "x-tt-env": "boe_test" },
+      "oauth": { "headers": { "x-tt-env": "boe_test" } }
+    }
+  }
+}
+```
+
+In the web client, use **Custom Headers** for MCP and **OAuth Settings > OAuth
+HTTP headers** for OAuth. Reconnect after changing settings. In the one-shot
+CLI, `--header "x-tt-env: boe_test"` configures MCP and same-origin OAuth;
+repeatable `--oauth-header "x-tt-env: boe_test"` configures OAuth destinations,
+including the standalone `--use-stored-auth` refresh. CLI flags override the
+corresponding file-level header list for that invocation.
+
+The OAuth fetch chain covers protected-resource and authorization-server
+discovery, OIDC fallback probes, dynamic client registration, authorization-code
+exchange, refresh-token grants and revocation requests when supported by the
+server and cached OAuth state. Explicit OAuth headers override inherited routing
+headers; headers already set by the OAuth request win over both. `Authorization`,
+`Proxy-Authorization`, `Cookie`, `Host`, `Accept`, `Content-Type`, `Content-Length`,
+`Connection`, `MCP-*` and `x-mcp-remote-auth` are not inherited or accepted as
+OAuth custom headers. Invalid HTTP names or values are dropped.
+
+Use these fields for routing information, not secrets. `oauth.headers` is an
+explicit opt-in to send its values to server-advertised OAuth destinations.
+OAuth fetches can follow redirects, so custom routing values can also reach a
+redirect target. Arbitrary custom API-key headers have no automatic secrecy
+classification; do not put them in either header list for OAuth routing.
+
+**Browser navigation is different:** opening `/authorize`, visiting login or
+consent pages, and following browser redirects cannot attach arbitrary HTTP
+headers through Inspector JavaScript. A query parameter is not a header. If the
+authorization page itself requires `x-tt-env`, use an environment-specific
+authorization hostname or a trusted gateway that adds the routing header.
+Inspector does not bypass that browser boundary or replace the OAuth protocol.
+
 ### Inspector-specific per-server fields
 
 These have no analog in the broader `mcp.json` ecosystem. Each is **omitted on write when it equals its default**, so a round-trip through the Inspector keeps the file diff minimal.
@@ -209,7 +259,7 @@ These have no analog in the broader `mcp.json` ecosystem. Each is **omitted on w
 | `maxFetchRequests`                     | `1000`     | Network-log retention for this server (`DEFAULT_MAX_FETCH_REQUESTS`); `0` means unlimited                                                                                                   |
 | `skillCatalogMaxSkills`                | `256`      | The maximum number of skills whose files are read in one verification run (`SKILL_MAX_CATALOG_SKILLS`) — the CLI's `--verify` and the TUI Skills pane's `v` (verify all); verifying a single skill always reads it in full. Positive integer; there is no unlimited value |
 | `skillCatalogMaxBytes`                 | `67108864` | The maximum number of bytes read across all skills in one verification run (`SKILL_MAX_CATALOG_BYTES`, 64 MiB). Positive integer |
-| `oauth`                                | —          | `{ clientId, clientSecret, scopes, requestRefreshToken, scopeOnRefresh, revokeOnClear, authorizationParams, authorizationUrl, tokenUrl, enterpriseManaged, onInsufficientScope }`                                                               |
+| `oauth`                                | —          | `{ headers, clientId, clientSecret, scopes, requestRefreshToken, scopeOnRefresh, revokeOnClear, authorizationParams, authorizationUrl, tokenUrl, enterpriseManaged, onInsufficientScope }`                                                               |
 
 `metadata` is a JSON **object**, and its values may be any JSON — an object, an array, a number, a boolean, `null` — not only a string. The MCP spec does not restrict `_meta` value types in general, and the SDK models the field as a passthrough object, so the Inspector does not narrow it either ([#1910](https://github.com/modelcontextprotocol/inspector/issues/1910)). Edit it in Server Settings → Request Metadata, which is a JSON editor rather than the key/value rows `headers` and `env` use; text that is not a JSON object is flagged inline and not applied.
 

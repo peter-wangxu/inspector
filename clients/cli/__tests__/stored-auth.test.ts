@@ -83,6 +83,143 @@ describe("deepLinkTransport", () => {
 });
 
 describe("refreshStoredAuthToken", () => {
+  it.each([
+    "servers/list",
+    "servers/show",
+    "servers/add",
+    "servers/edit",
+    "servers/remove",
+  ])(
+    "rejects OAuth headers for the non-connecting %s command",
+    async (method) => {
+      const result = await runCli([
+        "--method",
+        method,
+        "--oauth-header",
+        "X-Environment: staging",
+      ]);
+      expectCliFailure(result);
+      expect(result.stderr).toContain(
+        "--oauth-header requires a command that connects to a server",
+      );
+    },
+  );
+  it("applies --oauth-header to standalone refresh without changing MCP routing headers", async () => {
+    const observed: {
+      path: string;
+      env?: string | string[];
+      authorization?: string;
+    }[] = [];
+    const server = createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", () => {
+        const path = req.url ?? "";
+        observed.push({
+          path,
+          env: req.headers["x-tt-env"],
+          authorization: req.headers.authorization,
+        });
+        if (path === "/token") {
+          res.writeHead(200, { "content-type": "application/json" }).end(
+            JSON.stringify({
+              access_token: "fresh-access",
+              refresh_token: "fresh-refresh",
+              token_type: "Bearer",
+            }),
+          );
+          return;
+        }
+        if (req.method === "GET") {
+          res.writeHead(405).end();
+          return;
+        }
+        if (req.method === "DELETE") {
+          res.writeHead(200).end();
+          return;
+        }
+        const rpc = JSON.parse(Buffer.concat(chunks).toString()) as {
+          id?: number;
+          method: string;
+          params?: { protocolVersion: string };
+        };
+        if (rpc.id === undefined) {
+          res.writeHead(202).end();
+          return;
+        }
+        const result =
+          rpc.method === "initialize"
+            ? {
+                protocolVersion: rpc.params?.protocolVersion,
+                capabilities: { tools: {} },
+                serverInfo: { name: "routing-test", version: "1" },
+              }
+            : { tools: [] };
+        res
+          .writeHead(200, { "content-type": "application/json" })
+          .end(JSON.stringify({ jsonrpc: "2.0", id: rpc.id, result }));
+      });
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("No server address");
+    const base = `http://127.0.0.1:${address.port}`;
+    const fixture = writeOAuthFixture({
+      [`${base}/mcp`]: {
+        tokens: {
+          access_token: "old-access",
+          refresh_token: "old-refresh",
+          token_type: "Bearer",
+        },
+        clientInformation: { client_id: "cid" },
+        serverMetadata: {
+          issuer: base,
+          token_endpoint: `${base}/token`,
+          token_endpoint_auth_methods_supported: ["none"],
+        },
+      },
+    });
+    try {
+      const result = await runCli(
+        [
+          "--transport",
+          "http",
+          "--server-url",
+          `${base}/mcp`,
+          "--use-stored-auth",
+          "--header",
+          "x-tt-env: boe_mcp",
+          "--oauth-header",
+          "x-tt-env: boe_oauth",
+          "--oauth-header",
+          "x-route: test",
+          "--method",
+          "tools/list",
+        ],
+        { env: { MCP_INSPECTOR_OAUTH_STATE_PATH: fixture } },
+      );
+      expectCliSuccess(result);
+      expect(observed.find(({ path }) => path === "/token")?.env).toBe(
+        "boe_oauth",
+      );
+      const calls = observed.filter(({ path }) => path === "/mcp");
+      expect(calls.length).toBeGreaterThan(0);
+      expect(
+        calls.every(
+          ({ env, authorization }) =>
+            env === "boe_mcp" && authorization === "Bearer fresh-access",
+        ),
+      ).toBe(true);
+    } finally {
+      rmSync(dirname(fixture), { recursive: true, force: true });
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve())),
+      );
+    }
+  });
   const SERVER = "https://api.example/mcp";
 
   // Persisted writes split tokens into the process-wide (in-memory, per

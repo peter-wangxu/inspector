@@ -621,6 +621,7 @@ export function ServerSettingsForm({
       clientSecret: settings.oauthClientSecret ?? "",
       scopes: settings.oauthScopes ?? "",
       authorizationParams,
+      headers: settings.oauthHeaders,
       authorizationUrl: settings.oauthAuthorizationUrl ?? "",
       tokenUrl: settings.oauthTokenUrl ?? "",
       enterpriseManaged: settings.enterpriseManaged ?? false,
@@ -1113,6 +1114,54 @@ export function ServerSettingsForm({
                   out.
                 </Alert>
               ) : null}
+              <Stack gap="xs">
+                <FieldLabel>OAuth HTTP headers</FieldLabel>
+                <FieldDescription>
+                  Routing headers such as X-Environment for discovery,
+                  registration, token exchange, refresh and revocation. These
+                  are explicitly sent to all OAuth destinations, including
+                  external authorization servers. Do not put API keys or cookies
+                  here. OAuth protocol headers cannot be overridden. Browser
+                  authorization navigation cannot carry custom headers.
+                </FieldDescription>
+                {(settings.oauthHeaders ?? []).length === 0 ? (
+                  <EmptyHint>No OAuth headers configured</EmptyHint>
+                ) : (
+                  <KeyValueRows
+                    items={settings.oauthHeaders ?? []}
+                    entityLabel="OAuth header"
+                    onChange={(index, key, value) =>
+                      onOAuthChange({
+                        ...currentOAuth(),
+                        headers: (settings.oauthHeaders ?? []).map((row, i) =>
+                          i === index ? { key, value } : row,
+                        ),
+                      })
+                    }
+                    onRemove={(index) =>
+                      onOAuthChange({
+                        ...currentOAuth(),
+                        headers: (settings.oauthHeaders ?? []).filter(
+                          (_, i) => i !== index,
+                        ),
+                      })
+                    }
+                  />
+                )}
+                <AddButton
+                  onClick={() =>
+                    onOAuthChange({
+                      ...currentOAuth(),
+                      headers: [
+                        ...(settings.oauthHeaders ?? []),
+                        { key: "", value: "" },
+                      ],
+                    })
+                  }
+                >
+                  + Add OAuth Header
+                </AddButton>
+              </Stack>
               <Stack gap="xs">
                 <FieldLabel>Additional authorization parameters</FieldLabel>
                 <FieldDescription>

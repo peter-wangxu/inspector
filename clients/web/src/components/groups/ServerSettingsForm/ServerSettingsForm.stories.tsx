@@ -166,6 +166,7 @@ function InteractiveRender(args: ServerSettingsFormProps) {
             oauthClientId: oauth.clientId,
             oauthClientSecret: oauth.clientSecret,
             oauthScopes: oauth.scopes,
+            oauthHeaders: oauth.headers,
           },
         });
       }}
@@ -245,6 +246,17 @@ export const WithOAuth: Story = {
       oauthClientId: "my-client-id",
       oauthClientSecret: "super-secret-value",
       oauthScopes: "read write admin",
+    },
+  },
+};
+
+export const OAuthRoutingHeaders: Story = {
+  args: {
+    expandedSections: ["headers", "oauth"],
+    settings: {
+      ...defaultSettings,
+      headers: [{ key: "X-Environment", value: "staging" }],
+      oauthHeaders: [{ key: "X-Environment", value: "staging" }],
     },
   },
 };

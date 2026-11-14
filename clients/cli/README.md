@@ -16,6 +16,14 @@ Supports tools, resources, and prompts (plus `--method servers/list` / `servers/
 
 ### Examples
 
+For environment-routing headers across MCP and OAuth, configure `headers` and
+`oauth.headers` in the server file, or pass `--header "x-tt-env: boe_test"` and
+repeatable `--oauth-header "x-tt-env: boe_test"`. OAuth headers are sent to
+external authorization-server destinations too; use routing values, not secrets.
+They apply to HTTP requests, not the browser's authorization-page navigation.
+See [OAuth HTTP headers](../../docs/mcp-server-configuration.md#oauth-http-headers)
+for scope, precedence and reserved names.
+
 **Basic usage**
 
 ```bash
@@ -188,6 +196,7 @@ Options that specify the MCP server (catalog/config file, ad-hoc command/URL, en
 | `--relogin`                   | Delete stored OAuth for this server URL from the shared store before connect; interactive login still only runs if the server requires auth. Requires an HTTP/SSE URL (rejected for stdio). Conflicts with `--stored-auth-only` / `--use-stored-auth` / `--wait-for-auth` / catalog short-circuits.                                                                                                                  |
 | `--no-revoke`                 | With `--relogin`, skip the [RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009) revocation request that would otherwise end the grant at the authorization server when the local state is deleted. The per-server `oauth.revokeOnClear` setting is the persistent form of the same opt-out; either one is enough to skip it. See [Revoking on `--relogin`](#revoking-on---relogin). |
 | `--stored-auth-only`          | **CI / non-interactive safe:** never start interactive OAuth / step-up (and never auto-open a browser); use the shared store if present, otherwise fail immediately with `auth_required`. Prefer this over a bare pipe/CI run that would otherwise attempt interactive login.                                                                                                                                        |
+| `--oauth-header <header>` | Repeatable OAuth HTTP routing header as `Name: Value`; default unset. Includes external authorization-server origins and standalone stored-token refresh. Overrides the file-level `oauth.headers` for this run. Rejected for catalog-only commands, `--list-stored-auth` and `--print-handoff`. See [OAuth HTTP headers](../../docs/mcp-server-configuration.md#oauth-http-headers). |
 | `--oauth-debug`               | Print each OAuth step to stderr as it runs: the protected-resource and authorization-server metadata URLs and statuses, the client registration request and response, the authorization URL, and the token request and response. Tokens, codes, PKCE verifiers and client secrets are redacted. See [Tracing OAuth](#tracing-oauth---oauth-debug). |
 | `--completion <shell>`        | Print a `bash`, `zsh` or `fish` completion script and exit (no server connection). See [Shell completion](#shell-completion). |
 

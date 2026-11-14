@@ -20,6 +20,7 @@ import { createProxyFetch } from "./proxyFetch.js";
 import { createGuardedFetch } from "./fetchGuard.js";
 import { exemptMcpEndpoint } from "../../auth/requestTimeout.js";
 import { routeOAuthRequests } from "../../auth/routeOAuthRequests.js";
+import { withOAuthHeaders } from "../../auth/customHeaders.js";
 import { createNotificationHeadersFetch } from "./notificationHeadersFetch.js";
 import { createSuppressNotificationStreamFetch } from "./suppressNotificationStreamFetch.js";
 import { createCookieJarWrapper } from "./cookieJarFetch.js";
@@ -50,10 +51,17 @@ function headersFromSettings(
  * the server under test chose, so it goes through the destination guard
  * (#2749), as the browser's own OAuth does via `/api/fetch`.
  */
-export function createBackendBaseFetch(config: MCPServerConfig): typeof fetch {
+export function createBackendBaseFetch(
+  config: MCPServerConfig,
+  settings?: InspectorServerSettings,
+): typeof fetch {
   return routeOAuthRequests(
     createProxyFetch() ?? globalThis.fetch,
-    createGuardedFetch(),
+    withOAuthHeaders(
+      createGuardedFetch(),
+      () => settings,
+      () => ("url" in config ? config.url : undefined),
+    ),
     exemptMcpEndpoint(
       () => ("url" in config ? config.url : undefined),
       () => getServerType(config) === "sse",
@@ -94,7 +102,7 @@ export function createTransportNode(
   // that. The fallback is for the one caller that supplies nothing: the web
   // backend (`core/mcp/remote/node/server.ts`), which calls this directly,
   // and it routes OAuth through the destination guard (#2749).
-  const baseFetch = optionsFetchFn ?? createBackendBaseFetch(config);
+  const baseFetch = optionsFetchFn ?? createBackendBaseFetch(config, settings);
   // Purely passive, so — unlike proxying and interception — it is safe to
   // apply to any fetch, including a caller's explicit one.
   const withChallengeObserver = (inner: typeof fetch): typeof fetch =>
